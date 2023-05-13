@@ -1,0 +1,258 @@
+#pragma once
+// bfMergeSort.hpp
+
+#pragma once
+/**
+ * Copyright (c) 2023 John Robinson.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#include <cstring>
+#include <stdint.h>
+#include <algorithm>    // std::swap
+#include <cmath>        // log2
+#include "parallelFor.hpp"
+
+#define sortFor false
+#define sortRev true
+
+
+// the next series of methods are utility functions that are used by the various sort routines.
+
+#define minimum(a,b) ((a)<(b) ? (a) : (b))
+#define maximum(a,b) ((a)>(b) ? (a) : (b))
+
+
+  // this routine does an integer division rounded up.
+  inline size_t iDivUp(size_t a, size_t b)
+  {
+    return ((a % b) == 0) ? (a / b) : (a / b + 1);
+  }
+
+  // mergeFF merges two sorted ranges in the src array into a single sorted range in the dst array
+// aBeg and aEnd inclusive indicate one sorted range 
+// bBeg and bEnd inclusive indicate the other sorted range
+// dBeg indicates where in the dst array the merge list should start
+// First, the elements at aEnd and bEnd are compared.  The end index with the smaller value is used.
+// to cap the merge function.  After than, the reset of the other array is just copied to the dst array
+// The two ranges being merged do not have to be adjacent in memory.
+  template< class RandomItD, class RandomItS, class CF>
+  inline void mergeFF(RandomItD dst, RandomItS src, size_t aBeg, size_t aEnd, size_t bBeg, size_t bEnd, size_t dBeg, CF compFunc) {
+    if (compFunc(*(src+aEnd), *(src+bEnd))) { // determine which range will be completed first during a compare and copy loop
+      while (aBeg <= aEnd) {  // the a range will be completely copied first so only compare up the end of a
+        *(dst+dBeg++) = !compFunc(*(src+bBeg), *(src+aBeg)) ? *(src+aBeg++) : *(src+bBeg++);
+      }
+      while (bBeg <= bEnd) { // then copy the rest of b
+        *(dst+dBeg++) = *(src+bBeg++);
+      }
+    }
+    else {
+      while (bBeg <= bEnd) {  // the b range will be completely copied first so only compare up the end of b
+        *(dst+dBeg++) = compFunc(*(src+aBeg), *(src+bBeg)) ? *(src+aBeg++) : *(src+bBeg++);
+      }
+      while (aBeg <= aEnd) { // then copy the rest of a
+        *(dst+dBeg++) = *(src+aBeg++);
+      }
+    }
+  }
+
+
+  // ParallelMerge and it's supporting functions getMergPaths and mergePath are a CPU implementation of
+  // parallel merge function developed for GPUs described in "GPU Merge Path: A GPU Merging Algorithm" by Greenand, McColl, and Bader.
+  // Proceedings of the 26th ACM International Conference on Supercomputing
+
+  // For a particular output element of a merge, find all the elements in valA and ValB that will be below it.  
+  template <class RandomIt, class CF>
+  size_t mergePath(RandomIt valA, int64_t aCount, RandomIt valB, int64_t bCount, int64_t diag, CF compFunc, size_t threads) {
+
+    size_t begin = maximum(0, diag - bCount);
+    size_t end = minimum(diag, aCount);
+
+    while (begin < end) {
+      size_t mid = begin + ((end - begin) >> 1);
+      //T  aVal = valA[mid];
+      //T  bVal = valB[diag - 1 - mid];
+      bool pred = compFunc( *(valA + mid), *(valB + (diag - 1 - mid)) );
+      if (pred) begin = mid + 1;
+      else end = mid;
+    }
+    return begin;
+  }
+
+  // Divide the output of the merge into #-of-threads equal segments and determine the elements of valA and valB below each segment boundary. 
+  template <class RandomIt, class CF>
+  inline void getMergePaths(size_t mpi[], RandomIt valA, int64_t aCount, RandomIt valB, int64_t bCount, int64_t spacing, CF compFunc, size_t threads) {
+
+    int64_t partitions = threads;
+    mpi[0] = 0;
+    mpi[partitions] = aCount;
+
+    for (int i = 1; i < partitions; i++) {
+      //    parallelFor(1, partitions, [=](int64_t i, int64_t nothing) {
+      int64_t diag = i * spacing;
+      mpi[i] = mergePath(valA, aCount, valB, bCount, diag, compFunc, threads);
+      //      }, threads);
+    }
+  }
+
+  // parallelMerge() merges two sorted ranges in the src array into a single sorted range in the dst array
+  // aBeg and aEnd inclusive indicate one sorted range in the src array 
+  // bBeg and bEnd inclusive indicate the other sorted range in the src array
+  // dBeg indicates where in the dst array the merge list should start
+  // After determining the ranges of the src segments that will go nto each output segment, use the mergeFF() function to 
+  // merge those segments in parallel.
+  template< class RandomItS, class RandomItD, class CF>
+  inline void parallelMerge(RandomItD dst, RandomItS src, size_t aBeg, size_t aEnd, size_t bBeg, size_t bEnd, size_t dBeg, CF compFunc, size_t threads) {
+
+    size_t mpi[1024];  // an array that hold the intermediate ranges during a parallel merge.
+
+    int64_t aCount = aEnd - aBeg + 1;
+    int64_t bCount = bEnd - bBeg + 1;
+    int64_t spacing = iDivUp(aCount + bCount, threads);
+    getMergePaths(mpi, src+aBeg, aCount, src+bBeg, bCount, spacing, compFunc, threads);
+
+    parallelFor((int64_t)0, (int64_t)threads, [=](int64_t thread) {
+      size_t grid = thread * spacing;		// Calculate the relevant index ranges into the source array
+      size_t a0 = mpi[thread] + aBeg;				// for this partition
+      size_t a1 = mpi[thread + 1] + aBeg;
+      size_t b0 = (grid - mpi[thread]) + bBeg;
+      size_t b1 = (minimum(aCount + bCount, grid + spacing) - mpi[thread + 1]) + bBeg;
+      size_t wtid = dBeg + thread * spacing;  //Place where this thread will start writing the data
+
+      if (a0 == a1) {							// If no a data just copy b
+        for (size_t b = b0; b < b1; b++) dst[wtid++] = src[b];
+      }
+      else if (b0 == b1) {					// If no b data just copy a
+        for (size_t a = a0; a < a1; a++) dst[wtid++] = src[a];
+      }
+      else { // else do a merge using the forward-forward merge
+        mergeFF(dst, src, a0, a1 - 1, b0, b1 - 1, wtid, compFunc);
+      }
+      }, threads);
+  }
+
+  // this function is only for debug purposes.
+  template<typename T> // 
+  void print(std::string t, T* in, int n) {
+    std::cout << t << " ";
+    for (size_t i = 0; i < n; i++) std::cout << in[i] << " ";
+    std::cout << std::endl;
+  }
+
+  // this function does a test and swap of two adjacent elements.
+  template<typename T, class CF> // 
+  inline void testAndSwap(T src[], int64_t idx, CF compFunc) {
+    if (compFunc(src[idx + 1], src[idx])) std::swap(src[idx], src[idx + 1]);  // forward
+  }
+
+  // this function does a swap on two adjacent elements when copying to another array.
+  template<typename T, class CF>
+  inline void testAndCopy(T dst[], T src[], int64_t idx, CF compFunc) {
+    if (compFunc(src[idx + 1], src[idx])) { // forward 
+      dst[idx + 1] = src[idx]; dst[idx] = src[idx + 1];
+    } else {
+      dst[idx] = src[idx]; dst[idx + 1] = src[idx + 1];
+    }
+  }
+  
+  // This is the forward-reverse merge function.  It does a merge of two sorted segments.  
+  // The twe segments are assumed to be adjacent in the src array but the segment
+  // in the upper portion of the array is in reverse order.
+  // The  source indices start at the bottom of the lower segment and top of the
+  // upper segments.  The merge progresses by moving the smaller element of the lower or upper
+  // segment and advancing it's index towards the middle.  
+  template<typename T, class CF>
+  inline void mergeFR(T dst[], T src[], int64_t bot, int64_t top) {
+    for (size_t ic = bot, jc = top, kc = bot; kc <= top; kc++) {  //forward
+      dst[kc] = compFunc(src[ic], src[jc]) ? src[ic++] : src[jc--];
+    }
+  }
+
+  template< class RandomIt, class CF>
+  void parallelSort(RandomIt begin, RandomIt end, CF compFunc , size_t threads = 0) {
+    // default number of threads iw the hardware number of cores.
+    if (threads == 0) threads = std::thread::hardware_concurrency();
+    // Get the total size;
+    const size_t len = end - begin;
+
+    // The current code fails if the number of elements is small relative to the number of threads.
+    // So limit the number of threads to 1 for small sort cases.
+    if (len < 100) threads = 1;
+
+    // calculate the fractional size of each segment to sort.
+    // calculating the arry segments using doubles results in segment sizes where the max segment size
+    // is only one bigger than the min.
+    double delta = double(len) / double(threads);
+
+    //sort threads segments of the input arry using the sort method provided in the function pointer
+    parallelFor((int64_t)0, (int64_t)threads, [begin, delta, compFunc](int64_t i) {
+      int64_t lb = llround(i * delta);
+      int64_t le = llround((i + 1) * delta);
+      std::sort(begin + lb, begin + le, compFunc);
+      }, threads);
+
+    if (threads <= 1) return;
+
+    // create a local swap space
+
+    typedef typename std::iterator_traits<RandomIt>::value_type T;
+
+     T *swap;  // pointer to array that that the data will be swapped to during a merge function
+    swap = new typename std::iterator_traits<RandomIt>::value_type[len];
+
+    const int64_t depth = ceil(log2(threads)); // calculate the number of depth iterations
+
+    double next;
+    double start;
+    for (int64_t d = depth; d > 0; d-=2) {
+      start = 0.0;
+      // merged the full sized pairs of of segments for this level.
+      for (next = 2.0 * delta; llround(next) < len; next += 2.0 * delta) {
+        parallelMerge(swap, begin, llround(start), llround(start + delta) - 1, llround(start + delta), llround(next) - 1, llround(start), compFunc, threads);
+        start = next;
+      }
+      // if there is an odd number segments to be merged, take care of the left overs.
+      if (llround(next) >= len) {
+        int64_t mid = llround(start + delta);
+        if (mid > len) mid = len;   // do a merge if there is a segment plus a partial segment
+        parallelMerge(swap, begin, llround(start), mid - 1, mid, len - 1, llround(start), compFunc, threads);
+      }
+      delta *= 2.0;
+
+      start = 0.0;
+      // merged the full sized pairs of of segments for this level.
+      for (next = 2.0 * delta; llround(next) < len; next += 2.0 * delta) {
+        parallelMerge(begin, swap, llround(start), llround(start + delta) - 1, llround(start + delta), llround(next) - 1, llround(start), compFunc, threads);
+        start = next;
+      }
+      // if there is an odd number segments to be merged, take care of the left overs.
+      if (llround(next) >= len) {
+        int64_t mid = llround(start + delta);
+        if (mid > len) mid = len;   // do a merge if there is a segment plus a partial segment
+        parallelMerge(begin, swap, llround(start), mid - 1, mid, len - 1, llround(start), compFunc, threads);
+      }
+      delta *= 2.0;
+
+    }
+    // clean up
+    delete[] swap;
+
+  }
+
+  template< class RandomIt>
+  void parallelSort(RandomIt begin, RandomIt end, size_t threads = 0) {
+    parallelSort(begin, end, std::less<typename std::iterator_traits<RandomIt>::value_type>(), threads);
+  }
+
+
+  /* ParallelCopy
+         else { // use just copy the partial segment.
+          double incr = double(len - start) / double(threads);
+          parallelFor((int64_t)0, (int64_t)threads, [fromPtr, toPtr, start, incr](int64_t i) {
+            int64_t lb = llround(start + i * incr);
+            int64_t le = llround(start + (i + 1) * incr);
+            for (size_t lc = lb; lc < le; lc++) *(toPtr + lc) = *(fromPtr + lc);
+            }, threads);
+        }
+*/
