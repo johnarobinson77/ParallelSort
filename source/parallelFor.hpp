@@ -86,15 +86,13 @@ std::vector<std::future<void>>*  parallelForNoWait(const RandomIt begin, const R
   double sEnd = seg_size;
   // start threads for one less than the number of segments
   static std::mutex lock;
-  for (int64_t seg = 0; seg < num_segs - 1; seg++) {
+  for (int64_t seg = 0; seg < num_segs; seg++) {
     futuresNW->push_back(std::async(std::launch::async, [begin, fn](int64_t lb, int64_t le) {
       for (int64_t i = lb; i < le; i++) fn(begin + i);
       }, sBeg, llround(sEnd)));
     sBeg = llround(sEnd);
     sEnd += seg_size;
   }
-  // execute the last segment in this thread
-  for (int64_t i = sBeg; i < llround(sEnd); i++) fn(begin + i);
 
   return futuresNW;
   }
