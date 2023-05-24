@@ -82,6 +82,15 @@ The following performance bar graphs show perfprmance with threads from 1 to 20 
 ![Integer Sort Performance](https://github.com/johnarobinson77/ParallelSort/blob/main/Integers.png)
 ![String Sort Performance](https://github.com/johnarobinson77/ParallelSort/blob/main/Strings.png)
 
+## Options
+The latest code offers to compile options that control the way threads are allocated in multiprocessing.  They are BALANCED_MULTITHREADING mode and MINIMIZED_THREAD_LAUNCH mode.  In either case, there are never more threads running than requested, but the number of times those reads are launched changes.
+
+MINIMIZED_THREAD_LAUNCH mode minimizes the number of times threads are launched.  This improves performance for smaller sort sizes.  The guidance is that if the typical size of the data to be sorted is 1 million or less, it is better to use this mode.    The downside is that the work is not as evenly balanced.  This is the default mode when no compiler switch is added.
+
+BALANCED_MULTITHREADING mode launches the available number of threads multiple times in a way that better balances the work among the treads at the cost of launching more threads.  This mode is slightly faster when the data to be sorted is greater than 1 million.  Use the 
+
+The difference between the above two modes is relatively small, and you should only need to study the gains when gains of less than 5% are important.
+
 ## References
 
 [1] Greenand, McColl, and Bader.  GPU Merge Path: A GPU Merging Algorithm
