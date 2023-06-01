@@ -14,7 +14,7 @@
 #include <vector>
 #include <numeric>
 
-#define NDEBUG
+//#define DEBUG
 
 // parallel_for runs the equivalent to the statement "for (int i = begin; i < end; i++) fn(i);"
 // where fn is a lambda.  if num_segs is greater than 1, it divides the the begin-end number range 
@@ -22,10 +22,10 @@
 // The last segment is run on the current thread.  
 // parallel_for returns after all treads segments have completed.
 template< class RandomIt, class FN >
-void parallelFor(const RandomIt begin, const RandomIt end, FN fn, size_t num_segs = 1) {
+void parallelFor(const RandomIt begin, const RandomIt end, FN fn, int64_t num_segs = 1) {
 
   // compute the number iterations and if 0, then return
-  const size_t n = end - begin;
+  const int64_t n = end - begin;
   if (n == 0) return;
   // if the number of elements is less than the number of segments or threads, reduce the number of segments
   if (n < num_segs) num_segs = n;
@@ -41,13 +41,13 @@ void parallelFor(const RandomIt begin, const RandomIt end, FN fn, size_t num_seg
   // start threads for one less than the number of segments
   for (int64_t seg = 0; seg < num_segs-1; seg++) { 
     futures.push_back(std::async(std::launch::async, [begin, fn](int64_t lb, int64_t le) {
-#ifndef NDEBUG
+#ifdef DEBUG
       {
         static std::mutex lock;
         std::lock_guard<std::mutex> guard(lock);
         std::cout << "parallel_for: n == " << le - lb << " thread: " << std::this_thread::get_id() << '\n';
       }
-#endif // NDEBUG
+#endif // DEBUG
       for (int64_t i = lb; i < le; i++) fn(begin + i);
       }, sBeg, llround(sEnd)));
     sBeg = llround(sEnd);
@@ -68,12 +68,12 @@ void parallelFor(const RandomIt begin, const RandomIt end, FN fn, size_t num_seg
 // parallelForBoWait returns before checking that all thread are done.  parallelForFinish() must be
 // called make sure all of the threads have finished.  
 template< class RandomIt, class FN >
-std::vector<std::future<void>>*  parallelForNoWait(const RandomIt begin, const RandomIt end, FN fn, size_t num_segs = 1) {
+std::vector<std::future<void>>*  parallelForNoWait(const RandomIt begin, const RandomIt end, FN fn, int64_t num_segs = 1) {
   
   auto* futuresNW = new std::vector<std::future<void>>;
 
   // compute the number iterations and if 0, then return
-  const std::size_t n = end - begin;
+  const int64_t n = end - begin;
   if (n == 0) return futuresNW;
   // if the number of elements is less than the number of segments or threads, reduce the number of segments
   if (n < num_segs) num_segs = n;

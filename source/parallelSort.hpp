@@ -58,7 +58,7 @@
   }
 
 
-  // ParallelMerge and it's supporting functions getMergPaths and mergePath are a CPU implementation of
+  // ParallelMerge and it's supporting functions getMergePaths and mergePath are a CPU implementation of
   // parallel merge function developed for GPUs described in "GPU Merge Path: A GPU Merging Algorithm" by Greenand, McColl, and Bader.
   // Proceedings of the 26th ACM International Conference on Supercomputing
 
@@ -117,7 +117,7 @@
       size_t a0 = mpi[thread] + aBeg;				// for this partition
       size_t a1 = mpi[thread + 1] + aBeg;
       size_t b0 = (grid - mpi[thread]) + bBeg;
-      size_t b1 = (minimum(aCount + bCount, grid + spacing) - mpi[thread + 1]) + bBeg;
+      size_t b1 = (minimum(aCount + bCount, (int64_t)grid + spacing) - mpi[thread + 1]) + bBeg;
       size_t wtid = dBeg + thread * spacing;  //Place where this thread will start writing the data
 
       if (a0 == a1) {							// If no a data just copy b
@@ -177,35 +177,35 @@
      T *swap;  // pointer to array that that the data will be swapped to during a merge function
     swap = new typename std::iterator_traits<RandomIt>::value_type[len];
 
-    const int64_t depth = ceil(log2(threads)); // calculate the number of depth iterations
+    const int64_t depth = (int64_t)ceil(log2(threads)); // calculate the number of depth iterations
 
     double next;
     double start;
     for (int64_t d = depth; d > 0; d-=2) {
       start = 0.0;
       // merged the full sized pairs of of segments for this level.
-      for (next = 2.0 * delta; llround(next) <= len; next += 2.0 * delta) {
+      for (next = 2.0 * delta; llround(next) <= (int64_t)len; next += 2.0 * delta) {
         parallelMerge(swap, begin, llround(start), llround(start + delta) - 1, llround(start + delta), llround(next) - 1, llround(start), compFunc, threads);
         start = next;
       }
       // if there is an odd number segments to be merged, take care of the left overs.
-      if (llround(next) > len) {
+      if (llround(next) > (int64_t)len) {
         int64_t mid = llround(start + delta);
-        if (mid > len) mid = len;   // do a merge if there is a segment plus a partial segment
+        if (mid > (int64_t)len) mid = len;   // do a merge if there is a segment plus a partial segment
         parallelMerge(swap, begin, llround(start), mid - 1, mid, len - 1, llround(start), compFunc, threads);
       }
       delta *= 2.0;
 
       start = 0.0;
       // merged the full sized pairs of of segments for this level.
-      for (next = 2.0 * delta; llround(next) <= len; next += 2.0 * delta) {
+      for (next = 2.0 * delta; llround(next) <= (int64_t)len; next += 2.0 * delta) {
         parallelMerge(begin, swap, llround(start), llround(start + delta) - 1, llround(start + delta), llround(next) - 1, llround(start), compFunc, threads);
         start = next;
       }
       // if there is an odd number segments to be merged, take care of the left overs.
-      if (llround(next) > len) {
+      if (llround(next) > (int64_t)len) {
         int64_t mid = llround(start + delta);
-        if (mid > len) mid = len;   // do a merge if there is a segment plus a partial segment
+        if (mid > (int64_t)len) mid = (int64_t)len;   // do a merge if there is a segment plus a partial segment
         parallelMerge(begin, swap, llround(start), mid - 1, mid, len - 1, llround(start), compFunc, threads);
       }
       delta *= 2.0;
@@ -218,7 +218,7 @@
 
 #else 
 
-#pragma message ("Compiling MINIMIZED_THREAD_LAUNCH_MODE")
+#pragma message ("Compiling MINIMIZED_THREAD_LAUNCH mode")
 
   template< class RandomIt, class CF>
   void parallelSort(RandomIt begin, RandomIt end, CF compFunc, size_t threads = 0) {
@@ -252,7 +252,7 @@
     T* swap;  // pointer to array that that the data will be swapped to during a merge function
     swap = new typename std::iterator_traits<RandomIt>::value_type[len];
 
-    const int64_t depth = ceil(log2(threads)); // calculate the number of depth iterations
+    const int64_t depth = (int64_t)ceil(log2(threads)); // calculate the number of depth iterations
 
     int64_t loops; // number of full size (2*delta) segment merges that need to be run
     int64_t tasks; // number of parallel tasks tht need to be run (loops + leftover is any)
@@ -270,9 +270,9 @@
       // pmThreads is the number of threads given to each parallelMerge in the full delta sized segments
       // loThreads is the number of threads assigned to the left over parallelMerge and will be 0
       // if there is no left over or = to or 1 less than pmThreads.
-      loops = floor(double(len) / (2.0 * delta));
+      loops = (int64_t)floor(double(len) / (2.0 * delta));
       loStart = double(loops) * 2.0 * delta;
-      tasks = loops + ((llround(loStart) < len) ? 1 : 0);
+      tasks = loops + ((llround(loStart) < (int64_t)len) ? 1 : 0);
       pmThreads = iDivUp(threads, tasks);
       loThreads = threads - (loops * pmThreads);
       // merged the full sized pairs of of segments for this level.
@@ -283,17 +283,17 @@
         parallelMerge(swap, begin, lb, lm - 1, lm, le - 1, lb, compFunc, pmThreads);
         }, loops);
       // if there is an odd number segments to be merged, take care of the left overs.
-      if (llround(loStart) < len) {
+      if (llround(loStart) < (int64_t)len) {
         int64_t mid = llround(loStart + delta);
-        if (mid > len) mid = len;   // do a merge if there is a segment plus a partial segment
+        if (mid > (int64_t)len) mid = len;   // do a merge if there is a segment plus a partial segment
         parallelMerge(swap, begin, llround(loStart), mid - 1, mid, len - 1, llround(loStart), compFunc, loThreads);
       }
       parallelForFinish(futures);
       delta *= 2.0;
 
-      loops = floor(double(len) / (2.0 * delta));
+      loops = (int64_t)floor(double(len) / (2.0 * delta));
       loStart = double(loops) * 2.0 * delta;
-      tasks = loops + ((llround(loStart) < len) ? 1 : 0);
+      tasks = loops + ((llround(loStart) < (int64_t)len) ? 1 : 0);
       pmThreads = iDivUp(threads, tasks);
       loThreads = threads - (loops * pmThreads);
       // merged the full sized pairs of of segments for this level.
@@ -305,9 +305,9 @@
         parallelMerge(begin, swap, lb, lm - 1, lm, le - 1, lb, compFunc, pmThreads);
         }, loops);
       // if there is an odd number segments to be merged, take care of the left overs.
-      if (llround(loStart) < len) {
+      if (llround(loStart) < (int64_t)len) {
         int64_t mid = llround(loStart + delta);
-        if (mid > len) mid = len;   // do a merge if there is a segment plus a partial segment
+        if (mid > (int64_t)len) mid = len;   // do a merge if there is a segment plus a partial segment
         parallelMerge(begin, swap, llround(loStart), mid - 1, mid, len - 1, llround(loStart), compFunc, loThreads);
       }
       parallelForFinish(futures);
