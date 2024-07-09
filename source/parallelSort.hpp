@@ -1,12 +1,13 @@
-#pragma once
-// bfMergeSort.hpp
-
-#pragma once
 /**
+* parallelSot.hpp
+* 
  * Copyright (c) 2023 John Robinson.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
+
+#ifndef PARALLELSORT_HPP
+#define PARALLELSORT_HPP
 
 #include <cstring>
 #include <stdint.h>
@@ -77,7 +78,7 @@
       if (pred) begin = mid + 1;
       else end = mid;
     }
-    return begin;
+    return minimum(begin, aCount);
   }
 
   // Divide the output of the merge into #-of-threads equal segments and determine the elements of valA and valB below each segment boundary. 
@@ -140,8 +141,7 @@
     std::cout << std::endl;
   }
 
-//#define BALANCED_MULTITHREADING
-#ifdef BALANCED_MULTITHREADING
+#ifdef NEVER_USE_BALANCED_MULTITHREADING
 
 #pragma message ("Compiling  BALANCED_MULTITHREADING mode")
 
@@ -218,7 +218,7 @@
 
 #else 
 
-#pragma message ("Compiling MINIMIZED_THREAD_LAUNCH mode")
+//#pragma message ("Compiling MINIMIZED_THREAD_LAUNCH mode")
 
   template< class RandomIt, class CF>
   void parallelSort(RandomIt begin, RandomIt end, CF compFunc, size_t threads = 0) {
@@ -229,7 +229,7 @@
 
     // The current code fails if the number of elements is small relative to the number of threads.
     // So limit the number of threads to 1 for small sort cases.
-    if (len < 100) threads = 1;
+    if (len < 128) threads = 1;
 
     // calculate the fractional size of each segment to sort.
     // calculating the arry segments using doubles results in segment sizes where the max segment size
@@ -324,14 +324,4 @@
     parallelSort(begin, end, std::less<typename std::iterator_traits<RandomIt>::value_type>(), threads);
   }
 
-
-  /* ParallelCopy
-         else { // use just copy the partial segment.
-          double incr = double(len - start) / double(threads);
-          parallelFor((int64_t)0, (int64_t)threads, [fromPtr, toPtr, start, incr](int64_t i) {
-            int64_t lb = llround(start + i * incr);
-            int64_t le = llround(start + (i + 1) * incr);
-            for (size_t lc = lb; lc < le; lc++) *(toPtr + lc) = *(fromPtr + lc);
-            }, threads);
-        }
-*/
+#endif // PARALLELSORT_HPP
