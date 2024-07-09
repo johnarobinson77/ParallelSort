@@ -86,6 +86,22 @@ public:
   RDT operator()() { return dist_(gen_); }
 };
 
+template <typename RDT>
+class RandomIntervalReal {
+  // random seed by default
+  std::mt19937 gen_;
+  std::uniform_real_distribution<RDT> dist_;
+
+public:
+  RandomIntervalReal(RDT min, RDT max, unsigned int seed = std::random_device{}())
+    : gen_{ seed }, dist_{ min, max } {}
+
+  // if you want predictable numbers
+  void SetSeed(unsigned int seed) { gen_.seed(seed); }
+
+  RDT operator()() { return dist_(gen_); }
+};
+
 
 // Verification function used when data is directly sorted.
 template< class RandomIt>
@@ -586,7 +602,7 @@ int main(int argc, char* argv[]) {
 
 
   // set up the random number ranges for test size.
-  auto riSize = RandomInterval<int64_t>(1024LL, 1048576LL, 1);
+  auto riSize = RandomIntervalReal<double>(7.0, 17.0, 1);
 
   // set up a vector of number of treads to test and fill with a range of numbers.
   std::vector<size_t> threadList;
@@ -605,7 +621,7 @@ int main(int argc, char* argv[]) {
       if (fixedTestSize)  // set up either a fixed or random test size. 
         test_size = fixedTestSizeNum;
       else
-        test_size = riSize();
+        test_size = pow(2.0, riSize());
 
       // Generate the test data but only once if it's a fixed data size
       if ((test_num == 0 && tc == 0) || !fixedTestSize) {
@@ -634,4 +650,3 @@ int main(int argc, char* argv[]) {
 }
 
 #endif
-
