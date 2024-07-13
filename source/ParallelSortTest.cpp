@@ -67,17 +67,17 @@ int main()
 // a slight rewrite of the Romdomer class from
 // https://stackoverflow.com/questions/13445688/how-to-generate-a-random-number-in-c/53887645#53887645
 // Usage: int64_t example
-// auto riTestData = RandomInterval<int64_t>(-10000000000LL, 10000000000LL, 1);
+// auto riTestData = RandomInterval[Int|Real]<int64_t>(-10000000000LL, 10000000000LL, 1);
 // int64_t ri = riTestData();
 
 template <typename RDT>
-class RandomInterval {
+class RandomIntervalInt {
   // random seed by default
   std::mt19937 gen_;
   std::uniform_int_distribution<RDT> dist_;
 
 public:
-  RandomInterval(RDT min, RDT max, unsigned int seed = std::random_device{}())
+  RandomIntervalInt(RDT min, RDT max, unsigned int seed = std::random_device{}())
     : gen_{ seed }, dist_{ min, max } {}
 
   // if you want predictable numbers
@@ -126,7 +126,7 @@ bool sortVerifier(RandomIt test_data, RandomIt reference, const size_t test_size
         }
         errCnt++;
       }
-    }, (size_t)8);
+    }, threads);
   bool thisTestFailed = false;
   if (errCnt > 0) {
     std::cout << "Total of " << errCnt << " errors out of " << test_size << std::endl;
@@ -159,7 +159,7 @@ bool sortVerifierP(RandomIt test_data, RandomIt reference, const size_t test_siz
       }
       errCnt++;
     }
-    }, (size_t)8);
+    }, threads);
   bool thisTestFailed = false;
   if (errCnt > 0) {
     std::cout << "Total of " << errCnt << " errors out of " << test_size << std::endl;
@@ -182,7 +182,7 @@ public:
 
   // This function generates the test data.  Called once for fixed lenth tests 
   //and every loop for random size tests
-  virtual void generateData(size_t test_size,size_t  data_type) = 0;
+  virtual void generateData(size_t test_size, size_t  data_type, unsigned int random_seed) = 0;
 
   // This function copies the sours data to a test structure to be sorted
   // by parallel sort.  It returns the time to do the parallel sort in seconds
@@ -205,8 +205,6 @@ public:
 //  For verification, the same is done to the reference vector but sorted using the std::sort.  
 // Then the two are compared and any difference is logged as a failure
 class textPointerSortCase : SortCase {
-
-  RandomInterval<short>  rs = RandomInterval<short>('0', '}', 1);
   // create test_size random strings.
   std::vector<std::string>* strings = nullptr;
   std::vector<std::string*>* stringPtrs = nullptr;
@@ -221,12 +219,13 @@ class textPointerSortCase : SortCase {
 public:
   textPointerSortCase() {}
 
-  void generateData(size_t test_size, size_t data_type) {
+  void generateData(size_t test_size, size_t data_type, unsigned int random_seed) {
     // create test_size random strings.
     if (strings != nullptr) delete strings;
     strings = new std::vector<std::string>(test_size);
     if (stringPtrs != nullptr) delete stringPtrs;
     stringPtrs = new std::vector<std::string*>(test_size);
+    RandomIntervalInt<short>  rs = RandomIntervalInt<short>('0', '}', random_seed);
 
     // generate a 5 character c style string and write the string 
     // to the strings vector
@@ -287,7 +286,6 @@ public:
 // are compared and any difference is logged as a failure
 class arraySortCase : SortCase {
 
-  RandomInterval<int64_t> riTestData = RandomInterval<int64_t>(-10000000000LL, 10000000000LL, 1);
   // create test_size random strings.
   int64_t* source_data = nullptr;
   int64_t* test_data = nullptr;
@@ -297,19 +295,21 @@ public:
   arraySortCase() {
   }
 
-  void generateData(size_t test_size, size_t data_type) {
+  void generateData(size_t test_size, size_t data_type, unsigned int random_seed) {
 
     if (source_data != nullptr) delete[] source_data;
     source_data = new int64_t[test_size];
     if (test_data != nullptr) delete[] test_data;
     test_data = new  int64_t[test_size];
+    RandomIntervalInt<int64_t> riTestData = RandomIntervalInt<int64_t>(-10000000000LL, 10000000000LL, random_seed);
+
 
     // create the requested data type.
     switch (data_type) {
     case dtRandom: { // generate random data
       for (size_t i = 0; i < test_size; i++) source_data[i] = riTestData();
       // make about 5% of the data equal at prime number spacings
-      for (size_t i = 0; i < test_size; i += 19) source_data[i] = source_data[test_size - i];
+      for (size_t i = 1; i < test_size; i += 19) source_data[i] = source_data[test_size - i];
       break;
     }
     case dtOrdered: {  // generate ordered data
@@ -354,8 +354,7 @@ public:
     }
 
     std::sort(reference, reference + test_size);
-    bool thisTestFailed = sortVerifier
-      (test_data, reference, test_size);
+    bool thisTestFailed = sortVerifier(test_data, reference, test_size);
     delete reference;
     return thisTestFailed;
   }
@@ -377,8 +376,6 @@ public:
 // any difference is logged as a failure
 
 class vectorSortCase : SortCase {
-
-  RandomInterval<int64_t> riTestData = RandomInterval<int64_t>(-10000000000LL, 10000000000LL, 1);
   // create test_size random strings.
   int64_t* source_data = nullptr;
   std::vector<int64_t>* test_data = nullptr;
@@ -387,19 +384,20 @@ class vectorSortCase : SortCase {
 public:
   vectorSortCase() {}
 
-  void generateData(size_t test_size, size_t data_type) {
+  void generateData(size_t test_size, size_t data_type, unsigned int random_seed) {
 
     if (source_data != nullptr) delete[] source_data;
     source_data = new int64_t[test_size];
     if (test_data != nullptr) delete test_data;
     test_data = new std::vector<int64_t>(test_size);
+    RandomIntervalInt<int64_t> riTestData = RandomIntervalInt<int64_t>(-10000000000LL, 10000000000LL, random_seed);
 
     // create the requested data type.
     switch (data_type) {
     case dtRandom: { // generate random data
       for (size_t i = 0; i < test_size; i++) source_data[i] = riTestData();
       // make about 5% of the data equal at prime number spacings
-      for (size_t i = 0; i < test_size; i += 19) source_data[i] = source_data[test_size - i];
+      for (size_t i = 1; i < test_size; i += 19) source_data[i] = source_data[test_size - i];
       break;
     }
     case dtOrdered: {  // generate ordered data
@@ -471,6 +469,7 @@ void printHelp() {
   std::cout << "  -l <num tests per thread> sets tnu number of tests that will be run for each thread\n";
   std::cout << "  -dr | do | -db set the type of data for each test; random or ordered or reverse ordered respectively.  Default is -dr\n";
   std::cout << "  -v or -nv indicate whether to verify the sort  Default is -v\n";
+  std::cout << "  -g <random generator seed> used to vary the random numbers.  Default is 1.\n";
 }
 
 
@@ -485,13 +484,13 @@ int main(int argc, char* argv[]) {
   size_t sortTestSel = 1;
   size_t num_tests = 25;
   size_t dataType = dtRandom;
+  int64_t random_seed = 1;
 
   // parse the program arguments
   bool argError = false;
   for (size_t arg = 1; arg < argc; arg++) {
     bool oneMore = arg < (argc - 1);
     if (strcmp(argv[arg], "-minT") == 0) {
-
       arg++;
       if (!oneMore || 0 == (minThreads = atoi(argv[arg]))) {
         std::cout << "-minT requires a non-zero integer argument." << std::endl;
@@ -508,7 +507,7 @@ int main(int argc, char* argv[]) {
     else if (strcmp(argv[arg], "-n") == 0) {
       arg++;
       if (!oneMore || 0 == (fixedTestSizeNum = atoi(argv[arg]))) {
-        std::cout << "-t requires a non-zero integer argument." << std::endl;
+        std::cout << "-n requires a non-zero integer argument." << std::endl;
         argError = true;
       }
       fixedTestSize = true;
@@ -524,6 +523,13 @@ int main(int argc, char* argv[]) {
       arg++;
       if (!oneMore || 0 == (num_tests = atoi(argv[arg]))) {
         std::cout << "-l requires a non-zero integer argument." << std::endl;
+        argError = true;
+      }
+    }
+    else if (strcmp(argv[arg], "-g") == 0) {
+      arg++;
+      if (!oneMore || 0 == (random_seed = atoi(argv[arg]))) {
+        std::cout << "-g requires a non-zero integer argument." << std::endl;
         argError = true;
       }
     }
@@ -602,7 +608,7 @@ int main(int argc, char* argv[]) {
 
 
   // set up the random number ranges for test size.
-  auto riSize = RandomIntervalReal<double>(7.0, 17.0, 1);
+  auto riSize = RandomIntervalReal<double>(7.0, 17.0, (unsigned int)random_seed);
 
   // set up a vector of number of treads to test and fill with a range of numbers.
   std::vector<size_t> threadList;
@@ -621,11 +627,11 @@ int main(int argc, char* argv[]) {
       if (fixedTestSize)  // set up either a fixed or random test size. 
         test_size = fixedTestSizeNum;
       else
-        test_size = pow(2.0, riSize());
+        test_size = static_cast<int64_t>(pow(2.0, riSize()));
 
       // Generate the test data but only once if it's a fixed data size
       if ((test_num == 0 && tc == 0) || !fixedTestSize) {
-        sortCase->generateData(test_size, dataType);
+        sortCase->generateData(test_size, dataType, (unsigned int)random_seed);
       }
 
       // run the test case
@@ -634,7 +640,7 @@ int main(int argc, char* argv[]) {
       // Print the execution time.
       std::cout << "Total sort time of " << std::setw(8) << test_size << " elements ";
       std::cout << "using " << threads << " threads = ";
-      std::cout << std::fixed << std::setprecision(3) << testTime << " seconds" << std::endl;
+      std::cout << std::fixed << std::setprecision(5) << testTime << " seconds" << std::endl;
 
       /// And verify the data if requested
       if (verifySort) {
@@ -650,3 +656,4 @@ int main(int argc, char* argv[]) {
 }
 
 #endif
+
