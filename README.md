@@ -87,7 +87,7 @@ The latest code offers to compile options that control the way threads are alloc
 
 MINIMIZED_THREAD_LAUNCH mode minimizes the number of times threads are launched.  This improves performance for smaller sort sizes.  The guidance is that if the typical size of the data to be sorted is 1 million or less, it is better to use this mode.    The downside is that the work is not as evenly balanced.  This is the default mode when no compiler switch is added.
 
-BALANCED_MULTITHREADING mode is broken at the current check-in.  Needs work.
+BALANCED_MULTITHREADING has been disabled.  It is always slower than MINIMIZED_THREAD_LAUNCH.
 
 ## References
 
